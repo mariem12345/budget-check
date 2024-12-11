@@ -1,0 +1,53 @@
+FROM php:apache
+
+# Set the Apache Document Root
+ENV APACHE_DOCUMENT_ROOT=/var/www/html/public
+RUN sed -ri -e 's!/var/www/html!${APACHE_DOCUMENT_ROOT}!g' /etc/apache2/sites-available/*.conf
+RUN sed -ri -e 's!/var/www/!${APACHE_DOCUMENT_ROOT}!g' /etc/apache2/apache2.conf /etc/apache2/conf-available/*.conf
+
+# Configure PHP INI files
+COPY ./opcache.ini "$PHP_INI_DIR/conf.d/docker-php-ext-opcache.ini"
+COPY ./xdebug.ini "$PHP_INI_DIR/conf.d/99-xdebug.ini"
+RUN mv "$PHP_INI_DIR/php.ini-development" "$PHP_INI_DIR/php.ini"
+
+# Install required packages
+RUN apt-get -y update && apt-get install -y \
+    libicu-dev \
+    libzip-dev \
+    zip \
+    libjpeg-dev \
+    libpng-dev \
+    libfreetype6-dev \
+    git \
+    curl \
+    gcc \
+    make \
+    autoconf \
+    libc-dev \
+    pkg-config
+
+# Install PHP extensions
+RUN docker-php-ext-configure intl
+RUN docker-php-ext-configure gd --with-jpeg --with-freetype
+RUN docker-php-ext-install intl opcache pdo_mysql zip gd
+
+# Install Xdebug
+RUN pecl install xdebug && docker-php-ext-enable xdebug
+
+# Enable Apache Rewrite Module
+RUN a2enmod rewrite
+
+# Install APCu
+RUN pecl install apcu && docker-php-ext-enable apcu
+RUN echo "extension=apcu.so" > /usr/local/etc/php/conf.d/apcu.ini \
+    && echo "apc.enable_cli=1" >> /usr/local/etc/php/conf.d/apcu.ini \
+    && echo "apc.enable=1" >> /usr/local/etc/php/conf.d/apcu.ini
+
+# Install Composer
+RUN curl -sS https://getcomposer.org/installer | php -- --install-dir=/usr/local/bin --filename=composer
+
+# Install Symfony CLI
+RUN curl -sS https://get.symfony.com/cli/installer | bash && mv /root/.symfony5/bin/symfony /usr/local/bin/symfony
+
+# Install NVM
+RUN curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.5/install.sh | bash
